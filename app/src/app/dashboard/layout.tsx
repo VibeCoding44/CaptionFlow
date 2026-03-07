@@ -71,7 +71,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
     const isDemo = process.env.NEXT_PUBLIC_APP_MODE === "demo";
 
     return (
-        <div className="flex flex-col md:flex-row h-screen bg-zinc-950">
+        <div className="flex flex-col h-screen overflow-hidden bg-zinc-950">
             {/* Demo Mode Banner */}
             {isDemo && (
                 <div className="w-full bg-gradient-to-r from-amber-500/90 to-orange-500/90 text-white text-center py-2 px-4 text-sm font-medium shrink-0 z-50">
@@ -79,34 +79,36 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
                 </div>
             )}
 
-            {/* Mobile Header */}
-            <header className="flex md:hidden items-center justify-between p-4 border-b border-zinc-800/60 bg-zinc-950 shrink-0">
-                <div className="flex items-center gap-2">
-                    <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-violet-600">
-                        <Captions className="w-4 h-4 text-white" />
+            <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
+                {/* Mobile Header */}
+                <header className="flex md:hidden items-center justify-between p-4 border-b border-zinc-800/60 bg-zinc-950 shrink-0">
+                    <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-violet-600">
+                            <Captions className="w-4 h-4 text-white" />
+                        </div>
+                        <span className="font-semibold text-white tracking-tight">CaptionFlow</span>
                     </div>
-                    <span className="font-semibold text-white tracking-tight">CaptionFlow</span>
+                    <Sheet>
+                        <SheetTrigger asChild>
+                            <Button variant="ghost" size="icon" className="text-zinc-400">
+                                <Menu className="w-6 h-6" />
+                            </Button>
+                        </SheetTrigger>
+                        <SheetContent side="left" className="p-0 w-[260px] border-zinc-800/60 bg-zinc-950">
+                            <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
+                            <Sidebar isMobile />
+                        </SheetContent>
+                    </Sheet>
+                </header>
+
+                <div className="hidden md:flex">
+                    <Sidebar />
                 </div>
-                <Sheet>
-                    <SheetTrigger asChild>
-                        <Button variant="ghost" size="icon" className="text-zinc-400">
-                            <Menu className="w-6 h-6" />
-                        </Button>
-                    </SheetTrigger>
-                    <SheetContent side="left" className="p-0 w-[260px] border-zinc-800/60 bg-zinc-950">
-                        <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
-                        <Sidebar isMobile />
-                    </SheetContent>
-                </Sheet>
-            </header>
 
-            <div className="hidden md:flex">
-                <Sidebar />
+                <main className="flex-1 overflow-y-auto">
+                    <div className="p-4 md:p-6 lg:p-8">{children}</div>
+                </main>
             </div>
-
-            <main className="flex-1 overflow-y-auto">
-                <div className="p-4 md:p-6 lg:p-8">{children}</div>
-            </main>
         </div>
     );
 }
