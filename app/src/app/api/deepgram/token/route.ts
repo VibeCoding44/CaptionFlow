@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { checkDemoRateLimit } from "@/lib/rate-limit";
 
-const isDemo = process.env.NEXT_PUBLIC_APP_MODE === "demo";
+export const dynamic = "force-dynamic";
+
 const DEMO_TOKEN_LIMIT = 5; // Max 5 token requests per IP per day
 
 export async function GET(request: Request) {
+    const isDemo = process.env.NEXT_PUBLIC_APP_MODE === "demo";
+
     // ── Demo Mode: Rate limit + skip Firebase auth ──────────
     if (isDemo) {
         const ip = request.headers.get("x-forwarded-for") || "unknown";
@@ -19,7 +22,7 @@ export async function GET(request: Request) {
         console.log(`[Demo] Token request from ${ip} — ${remaining} remaining`);
 
         // In demo mode, skip Firebase auth and go straight to returning the key
-        const apiKey = process.env.DEEPGRAM_API_KEY;
+        const apiKey = process.env["DEEPGRAM_API_KEY"];
         if (!apiKey) {
             return NextResponse.json(
                 { error: "Deepgram API key not configured" },
@@ -48,7 +51,7 @@ export async function GET(request: Request) {
     }
 
     // Return the Deepgram API key
-    const apiKey = process.env.DEEPGRAM_API_KEY;
+    const apiKey = process.env["DEEPGRAM_API_KEY"];
 
     if (!apiKey) {
         console.error("DEEPGRAM_API_KEY is not defined in the environment variables.");
