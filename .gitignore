@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Environment variables (SECRETS — never commit these!)
+.env*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build outputs
+.next/
+out/
+build/
+dist/
+
+# Local tooling
+.vercel
+.netlify
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# TypeScript
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+
+# Antigravity / AI agent files
+antigravity-skills-main/
+.gemini/

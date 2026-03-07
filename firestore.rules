@@ -1,0 +1,116 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helper Functions ─────────────────────────────────────────
+
+    // Check if the request is from an authenticated user
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Get the requesting user's UID
+    function uid() {
+      return request.auth.uid;
+    }
+
+    // Check if the user is a member of the specified organization
+    function isOrgMember(orgId) {
+      return isSignedIn() && exists(/databases/$(database)/documents/organizationMembers/$(orgId + '_' + uid()));
+    }
+
+    // Check if the user is a member of the organization associated with the resource
+    // (Used when the document has an organizationId field)
+    function isMemberOfResourceOrg() {
+       return isSignedIn() && exists(/databases/$(database)/documents/organizationMembers/$(resource.data.organizationId + '_' + uid()));
+    }
+
+    // Check if the user will be a member of the organization associated with the *new* resource
+    function isMemberOfNewResourceOrg() {
+       return isSignedIn() && exists(/databases/$(database)/documents/organizationMembers/$(request.resource.data.organizationId + '_' + uid()));
+    }
+
+
+    // ─── Users Collection ─────────────────────────────────────────
+    // Users can read profile documents to see their team members
+    // Users can write only their own profile document
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && uid() == userId;
+      allow update: if isSignedIn() && uid() == userId;
+      allow delete: if false;
+    }
+
+    // ─── Organizations Collection ─────────────────────────────────
+    // Read: Only members can read the org.
+    // Create: Any authenticated user can create an org.
+    // Update: Only members can update the org.
+    // Delete: Not allowed from client.
+    match /organizations/{orgId} {
+      allow read: if isOrgMember(orgId);
+      allow create: if isSignedIn();
+      allow update: if isOrgMember(orgId);
+      allow delete: if false;
+    }
+
+    // ─── Organization Members Collection ──────────────────────────
+    // Read: A user can read their own membership documents.
+    // Create: Allowed for auth users (needed for initial org creation & invites).
+    // Update/Delete: Only if the user is deleting/updating their own membership (leaving org)
+    // or if handled via an admin backend.
+    match /organizationMembers/{memberId} {
+      // Allow reading if the requesting user's UID matches the userId in the document OR via memberId string match
+      // The memberId match allows fetching non-existent member documents without throwing an error
+      // The resource.data.userId match allows collection queries (where "userId" == uid) to succeed
+      // We also allow reading if the user is a member of the organization this record belongs to.
+      allow read: if isSignedIn() && (
+        memberId.matches('.*_' + uid()) || 
+        resource.data.userId == uid() ||
+        isMemberOfResourceOrg()
+      );
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && resource.data.userId == uid();
+      allow delete: if isSignedIn() && resource.data.userId == uid();
+    }
+
+    // ─── Sessions Collection ──────────────────────────────────────
+    // Read: Only members of the session's org can read it.
+    // Create: Only members of the target org can create sessions for it.
+    // Update: Only members of the active session's org can update it.
+    // Delete: Only members of the session's org can delete it.
+    match /sessions/{sessionId} {
+      allow read: if isMemberOfResourceOrg();
+      allow create: if isMemberOfNewResourceOrg();
+      allow update: if isMemberOfResourceOrg();
+      allow delete: if isMemberOfResourceOrg();
+
+      // ─── Transcripts Subcollection ──────────────────────────────
+      // Transcript lines inherit security from the parent session.
+      match /transcripts/{transcriptId} {
+        // We use get() here to check the parent document's organizationId
+        allow read: if isSignedIn() && exists(/databases/$(database)/documents/organizationMembers/$(get(/databases/$(database)/documents/sessions/$(sessionId)).data.organizationId + '_' + uid()));
+        allow create: if isSignedIn() && exists(/databases/$(database)/documents/organizationMembers/$(get(/databases/$(database)/documents/sessions/$(sessionId)).data.organizationId + '_' + uid()));
+        allow update: if false;
+        allow delete: if isSignedIn() && exists(/databases/$(database)/documents/organizationMembers/$(get(/databases/$(database)/documents/sessions/$(sessionId)).data.organizationId + '_' + uid()));
+      }
+    }
+
+    // ─── Displays Collection ──────────────────────────────────────
+    // Same pattern as sessions.
+    match /displays/{displayId} {
+      allow read: if isMemberOfResourceOrg();
+      allow create: if isMemberOfNewResourceOrg();
+      allow update: if isMemberOfResourceOrg();
+      allow delete: if false;
+    }
+
+    // ─── Organization Invites Collection ──────────────────────────
+    match /organizationInvites/{code} {
+      allow read: if isSignedIn();
+      allow create: if isMemberOfNewResourceOrg();
+      allow update, delete: if false;
+    }
+  }
+}
+
