@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebase-admin";
+
+const isDemo = process.env.NEXT_PUBLIC_APP_MODE === "demo";
 
 export async function GET(request: Request) {
     try {
@@ -13,6 +14,16 @@ export async function GET(request: Request) {
                 { status: 400 }
             );
         }
+
+        // Demo mode: skip Firestore check, just return the slug as-is
+        if (isDemo) {
+            return NextResponse.json({
+                uniqueSlug: slug,
+                available: true,
+            });
+        }
+
+        const { adminDb } = await import("@/lib/firebase-admin");
 
         let isUnique = false;
         let counter = 0;

@@ -29,12 +29,10 @@ import {
     Loader2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { displayService } from "@/lib/services/displays";
 import { useOrganization } from "@/context/OrganizationContext";
 import { Display, DisplayType } from "@/types";
 import { formatDistanceToNow } from "date-fns";
-import { doc, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { isDemo } from "@/lib/demo";
 
 export default function DisplaysPage() {
     const { currentOrganization } = useOrganization();
@@ -62,8 +60,13 @@ export default function DisplaysPage() {
                 return;
             }
             try {
-                const data = await displayService.getDisplays(currentOrganization.id);
-                setDisplays(data);
+                if (isDemo) {
+                    setDisplays([]);
+                } else {
+                    const { displayService } = await import("@/lib/services/displays");
+                    const data = await displayService.getDisplays(currentOrganization.id);
+                    setDisplays(data);
+                }
             } catch (error) {
                 console.error("Error loading displays:", error);
             } finally {
@@ -78,11 +81,10 @@ export default function DisplaysPage() {
         if (!currentOrganization) return;
         setCreating(true);
         try {
-            // Setup a safety timeout of 5 seconds so it doesn't stay frozen
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Request timed out (could be offline or queued)")), 5000));
-
-            const createPromise = async () => {
-                await displayService.createDisplay({
+            if (isDemo) {
+                // In demo mode, add a mock display locally
+                const mockDisplay: Display = {
+                    id: `demo-display-${Date.now()}`,
                     organizationId: currentOrganization.id,
                     name: `Display ${displays.length + 1}`,
                     type: "obs",
@@ -92,16 +94,34 @@ export default function DisplaysPage() {
                         textColor: "#FFFFFF",
                         backgroundColor: "rgba(0,0,0,0.5)",
                         alignment: "center",
-                    }
-                });
-                const data = await displayService.getDisplays(currentOrganization.id);
-                setDisplays(data);
-            };
-
-            await Promise.race([createPromise(), timeoutPromise]);
+                    },
+                    createdAt: Date.now(),
+                };
+                setDisplays(prev => [...prev, mockDisplay]);
+            } else {
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Request timed out")), 5000));
+                const createPromise = async () => {
+                    const { displayService } = await import("@/lib/services/displays");
+                    await displayService.createDisplay({
+                        organizationId: currentOrganization.id,
+                        name: `Display ${displays.length + 1}`,
+                        type: "obs",
+                        customSettings: {
+                            fontSize: 48,
+                            fontFamily: "Inter",
+                            textColor: "#FFFFFF",
+                            backgroundColor: "rgba(0,0,0,0.5)",
+                            alignment: "center",
+                        }
+                    });
+                    const data = await displayService.getDisplays(currentOrganization.id);
+                    setDisplays(data);
+                };
+                await Promise.race([createPromise(), timeoutPromise]);
+            }
         } catch (error: any) {
             console.error("Failed to create display", error);
-            alert(`Error creating display: ${error.message || 'Unknown error. Check console.'}`);
+            alert(`Error creating display: ${error.message || 'Unknown error.'}`);
         } finally {
             setCreating(false);
         }
@@ -122,21 +142,39 @@ export default function DisplaysPage() {
         if (!configDisplay || !currentOrganization) return;
         setConfigSaving(true);
         try {
-            const displayRef = doc(db, "displays", configDisplay.id);
-            await updateDoc(displayRef, {
-                name: configName,
-                type: configType,
-                customSettings: {
-                    fontSize: parseInt(configFontSize),
-                    fontFamily: configFontFamily,
-                    textColor: configTextColor,
-                    backgroundColor: configBgColor,
-                    alignment: configAlignment,
-                },
-            });
-            // Refresh the displays list
-            const data = await displayService.getDisplays(currentOrganization.id);
-            setDisplays(data);
+            if (isDemo) {
+                // In demo mode, update local state only
+                setDisplays(prev => prev.map(d => d.id === configDisplay.id ? {
+                    ...d,
+                    name: configName,
+                    type: configType,
+                    customSettings: {
+                        fontSize: parseInt(configFontSize),
+                        fontFamily: configFontFamily,
+                        textColor: configTextColor,
+                        backgroundColor: configBgColor,
+                        alignment: configAlignment,
+                    },
+                } : d));
+            } else {
+                const { doc, updateDoc } = await import("firebase/firestore");
+                const { db } = await import("@/lib/firebase");
+                const displayRef = doc(db, "displays", configDisplay.id);
+                await updateDoc(displayRef, {
+                    name: configName,
+                    type: configType,
+                    customSettings: {
+                        fontSize: parseInt(configFontSize),
+                        fontFamily: configFontFamily,
+                        textColor: configTextColor,
+                        backgroundColor: configBgColor,
+                        alignment: configAlignment,
+                    },
+                });
+                const { displayService } = await import("@/lib/services/displays");
+                const data = await displayService.getDisplays(currentOrganization.id);
+                setDisplays(data);
+            }
             setConfigDisplay(null);
         } catch (err) {
             console.error("Failed to save display config:", err);
@@ -149,9 +187,14 @@ export default function DisplaysPage() {
         if (!currentOrganization) return;
         setDeleting(displayId);
         try {
-            await displayService.deleteDisplay(displayId);
-            const data = await displayService.getDisplays(currentOrganization.id);
-            setDisplays(data);
+            if (isDemo) {
+                setDisplays(prev => prev.filter(d => d.id !== displayId));
+            } else {
+                const { displayService } = await import("@/lib/services/displays");
+                await displayService.deleteDisplay(displayId);
+                const data = await displayService.getDisplays(currentOrganization.id);
+                setDisplays(data);
+            }
         } catch (err) {
             console.error("Failed to delete display:", err);
         } finally {

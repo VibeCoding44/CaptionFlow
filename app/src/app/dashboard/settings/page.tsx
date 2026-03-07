@@ -29,10 +29,7 @@ import {
 } from "lucide-react";
 import { useOrganization } from "@/context/OrganizationContext";
 import { useAuth } from "@/context/AuthContext";
-import { orgService } from "@/lib/services/organization";
-import { doc, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { updateProfile } from "firebase/auth";
+import { isDemo } from "@/lib/demo";
 
 const LANGUAGE_MAP: Record<string, string> = {
     es: "Spanish",
@@ -97,8 +94,10 @@ export default function SettingsPage() {
 
     const handleSaveTranscription = async () => {
         if (!currentOrganization) return;
+        if (isDemo) { alert("Settings are read-only in demo mode."); return; }
         setTranscriptionSaveStatus("saving");
         try {
+            const { orgService } = await import("@/lib/services/organization");
             await orgService.updateSettings(currentOrganization.id, {
                 defaultSourceLanguage: sourceLanguage,
             });
@@ -118,8 +117,10 @@ export default function SettingsPage() {
 
     const handleSaveTranslation = async () => {
         if (!currentOrganization) return;
+        if (isDemo) { alert("Settings are read-only in demo mode."); return; }
         setTranslationSaveStatus("saving");
         try {
+            const { orgService } = await import("@/lib/services/organization");
             await orgService.updateSettings(currentOrganization.id, {
                 defaultTargetLanguages: targetLanguages,
             });
@@ -134,8 +135,11 @@ export default function SettingsPage() {
 
     const handleSaveDisplay = async () => {
         if (!currentOrganization) return;
+        if (isDemo) { alert("Settings are read-only in demo mode."); return; }
         setDisplaySaveStatus("saving");
         try {
+            const { doc, updateDoc } = await import("firebase/firestore");
+            const { db } = await import("@/lib/firebase");
             const orgRef = doc(db, "organizations", currentOrganization.id);
             await updateDoc(orgRef, {
                 "settings.defaultDisplay": {
@@ -156,8 +160,13 @@ export default function SettingsPage() {
 
     const handleSaveAccount = async () => {
         if (!user || !currentOrganization) return;
+        if (isDemo) { alert("Settings are read-only in demo mode."); return; }
         setAccountSaveStatus("saving");
         try {
+            const { updateProfile } = await import("firebase/auth");
+            const { doc, updateDoc } = await import("firebase/firestore");
+            const { db } = await import("@/lib/firebase");
+
             // Update Firebase Auth display name
             await updateProfile(user, { displayName });
 
