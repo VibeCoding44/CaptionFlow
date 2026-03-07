@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, ArrowRight, Mic, CheckCircle2, Languages, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { sessionService } from "@/lib/services/sessions";
+import { isDemo, generateDemoSessionId } from "@/lib/demo";
 
 const sourceLanguages = [
     { value: "en", label: "English" },
@@ -58,15 +58,35 @@ export default function NewSessionPage() {
 
         setIsSubmitting(true);
         try {
-            const sessionId = await sessionService.createSession(
-                currentOrganization.id,
-                sessionName,
-                sourceLanguage,
-                targetLanguages,
-                user.uid
-            );
+            let sessionId: string;
 
-            // Redirect to the active session view
+            if (isDemo) {
+                // Demo mode: generate a local session ID, store session in sessionStorage
+                sessionId = generateDemoSessionId();
+                const demoSession = {
+                    id: sessionId,
+                    organizationId: currentOrganization.id,
+                    name: sessionName,
+                    status: "scheduled" as const,
+                    startTime: null,
+                    endTime: null,
+                    sourceLanguage,
+                    targetLanguages,
+                    createdAt: Date.now(),
+                    createdBy: user.uid,
+                };
+                sessionStorage.setItem(`demo-session-${sessionId}`, JSON.stringify(demoSession));
+            } else {
+                const { sessionService } = await import("@/lib/services/sessions");
+                sessionId = await sessionService.createSession(
+                    currentOrganization.id,
+                    sessionName,
+                    sourceLanguage,
+                    targetLanguages,
+                    user.uid
+                );
+            }
+
             router.push(`/dashboard/sessions/${sessionId}/live`);
         } catch (error: any) {
             console.error("Error creating session:", error);

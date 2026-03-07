@@ -9,7 +9,6 @@
  *   pipeline.stop();
  */
 
-import { auth } from "@/lib/firebase";
 
 export interface TranscriptEvent {
     text: string;
@@ -73,17 +72,21 @@ export class CaptionPipeline {
             });
 
             // 2. Get Deepgram API key from our secure endpoint
-            const user = auth.currentUser;
-            if (!user) {
-                throw new Error("User not authenticated");
-            }
-            const token = await user.getIdToken();
+            const isDemo = process.env.NEXT_PUBLIC_APP_MODE === "demo";
+            const headers: Record<string, string> = {};
 
-            const tokenRes = await fetch("/api/deepgram/token", {
-                headers: {
-                    Authorization: `Bearer ${token}`
+            if (!isDemo) {
+                // Production: attach Firebase auth token
+                const { auth } = await import("@/lib/firebase");
+                const user = auth.currentUser;
+                if (!user) {
+                    throw new Error("User not authenticated");
                 }
-            });
+                const token = await user.getIdToken();
+                headers["Authorization"] = `Bearer ${token}`;
+            }
+
+            const tokenRes = await fetch("/api/deepgram/token", { headers });
             const data = await tokenRes.json();
 
             if (!tokenRes.ok || !data.key) {

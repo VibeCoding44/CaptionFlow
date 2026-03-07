@@ -4,16 +4,14 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useOrganization } from "@/context/OrganizationContext";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import { Session } from "@/types";
-import { sessionService } from "@/lib/services/sessions";
 import {
     CaptionPipeline,
     TranscriptEvent,
     PipelineStatus,
 } from "@/lib/services/caption-pipeline";
 import { getPusherClient, getSessionChannel, CAPTION_EVENT } from "@/lib/pusher-client";
+import { isDemo, DEMO_USER } from "@/lib/demo";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -122,7 +120,41 @@ export default function LiveSessionPage() {
     useEffect(() => {
         async function fetchSession() {
             if (!sessionId || !currentOrganization) return;
+
+            // ── Demo Mode: load from sessionStorage ──────────
+            if (isDemo) {
+                const stored = sessionStorage.getItem(`demo-session-${sessionId}`);
+                if (stored) {
+                    const data = JSON.parse(stored) as Session;
+                    setSession(data);
+                    setIsLive(data.status === "live");
+                } else {
+                    // Fallback: create a default demo session on the fly
+                    const fallback: Session = {
+                        id: sessionId,
+                        organizationId: currentOrganization.id,
+                        name: "Demo Session",
+                        status: "scheduled",
+                        startTime: null,
+                        endTime: null,
+                        sourceLanguage: "en",
+                        targetLanguages: ["es", "fr"],
+                        createdAt: Date.now(),
+                        createdBy: DEMO_USER.uid,
+                    };
+                    sessionStorage.setItem(`demo-session-${sessionId}`, JSON.stringify(fallback));
+                    setSession(fallback);
+                }
+                setLoading(false);
+                return;
+            }
+            // ─────────────────────────────────────────────────
+
             try {
+                const { doc, getDoc } = await import("firebase/firestore");
+                const { db } = await import("@/lib/firebase");
+                const { sessionService } = await import("@/lib/services/sessions");
+
                 const docRef = doc(db, "sessions", sessionId);
                 const docSnap = await getDoc(docRef);
 
@@ -132,7 +164,6 @@ export default function LiveSessionPage() {
                         setSession(data);
                         setIsLive(data.status === "live");
 
-                        // Load historical transcripts if the session is completed
                         if (data.status === "completed") {
                             try {
                                 const transcripts = await sessionService.getTranscripts(data.id);
@@ -242,12 +273,15 @@ export default function LiveSessionPage() {
 
             const timeUpdates = { endTime: Date.now() };
             try {
-                await sessionService.updateSessionStatus(session.id, "completed", timeUpdates);
+                if (!isDemo) {
+                    const { sessionService } = await import("@/lib/services/sessions");
+                    await sessionService.updateSessionStatus(session.id, "completed", timeUpdates);
+                }
                 setIsLive(false);
                 setSession({ ...session, status: "completed", ...timeUpdates });
                 setError(null);
 
-                // Broadcast the change over Pusher
+                // Broadcast the status change over Pusher
                 fetch("/api/broadcast/status", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -260,7 +294,10 @@ export default function LiveSessionPage() {
             // --- START ---
             const timeUpdates = { startTime: Date.now() };
             try {
-                await sessionService.updateSessionStatus(session.id, "live", timeUpdates);
+                if (!isDemo) {
+                    const { sessionService } = await import("@/lib/services/sessions");
+                    await sessionService.updateSessionStatus(session.id, "live", timeUpdates);
+                }
                 setIsLive(true);
                 setSession({ ...session, status: "live", ...timeUpdates });
                 setCaptions([]);
@@ -269,7 +306,7 @@ export default function LiveSessionPage() {
                 setInterimTranslations({});
                 setError(null);
 
-                // Broadcast the change over Pusher
+                // Broadcast the status change over Pusher
                 fetch("/api/broadcast/status", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },

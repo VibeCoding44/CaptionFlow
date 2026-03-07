@@ -2,9 +2,8 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { useAuth } from "./AuthContext";
-import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import { Organization, OrganizationMember } from "@/types";
+import { isDemo, DEMO_ORGANIZATION } from "@/lib/demo";
 
 interface OrganizationContextType {
     organizations: Organization[]; // All orgs they belong to
@@ -33,16 +32,27 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
             return;
         }
 
+        // ── Demo Mode: use mock org ──────────────────────
+        if (isDemo) {
+            setOrganizations([DEMO_ORGANIZATION]);
+            setCurrentOrganization(DEMO_ORGANIZATION);
+            setCurrentMemberRole("owner");
+            setLoadingOrganization(false);
+            return;
+        }
+        // ─────────────────────────────────────────────────
+
         try {
+            const { collection, query, where, getDocs, doc, getDoc } = await import("firebase/firestore");
+            const { db } = await import("@/lib/firebase");
+
             const membersRef = collection(db, "organizationMembers");
             const q = query(membersRef, where("userId", "==", user.uid));
             const querySnapshot = await getDocs(q);
 
             if (!querySnapshot.empty) {
-                // Get all org IDs the user is a member of
                 const memberOrgs = querySnapshot.docs.map(d => d.data() as OrganizationMember);
 
-                // Fetch the actual organization documents
                 const fetchedOrgs: Organization[] = [];
                 for (const member of memberOrgs) {
                     const orgRef = doc(db, "organizations", member.organizationId);
@@ -55,19 +65,16 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
                 setOrganizations(fetchedOrgs);
 
                 if (fetchedOrgs.length > 0) {
-                    // Check if there's a previously selected org in localStorage
                     const savedOrgId = localStorage.getItem("captionkit_org_id");
                     let activeOrg = fetchedOrgs.find(org => org.id === savedOrgId);
 
                     if (!activeOrg) {
-                        // Fall back to the first one available
                         activeOrg = fetchedOrgs[0];
                         localStorage.setItem("captionkit_org_id", activeOrg.id);
                     }
 
                     setCurrentOrganization(activeOrg);
 
-                    // Look up role for the active org
                     const roleMapping = memberOrgs.find(m => m.organizationId === activeOrg?.id);
                     setCurrentMemberRole(roleMapping?.role || null);
                 } else {
@@ -101,7 +108,6 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
         if (org) {
             localStorage.setItem("captionkit_org_id", orgId);
             setCurrentOrganization(org);
-            // Look up role for the active org (we should technically fetch or cache roles, but re-fetching ensures correctness for now)
             refreshOrganization();
         }
     }, [organizations, refreshOrganization]);

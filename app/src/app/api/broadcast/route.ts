@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPusherServer } from "@/lib/pusher-server";
 import { getSessionChannel, CAPTION_EVENT } from "@/lib/pusher-client";
-import { adminDb } from "@/lib/firebase-admin";
 import { checkDemoRateLimit } from "@/lib/rate-limit";
 
 const isDemo = process.env.NEXT_PUBLIC_APP_MODE === "demo";
@@ -62,7 +61,6 @@ export async function POST(req: NextRequest) {
         const translations: Record<string, string> = {};
 
         if (targetLanguages && targetLanguages.length > 0) {
-            // Translate to all target languages concurrently
             const translationPromises = targetLanguages.map(async (lang) => {
                 try {
                     const [translated] = await translateClient.translate(text, {
@@ -94,14 +92,10 @@ export async function POST(req: NextRequest) {
         });
 
         // Save final transcripts with translations to Firestore
-        if (isFinal) {
-            // In demo mode: don't pollute the real database
-            if (isDemo) {
-                console.log("[Demo] Skipping Firestore transcript save");
-                return NextResponse.json({ success: true, translations });
-            }
-
+        if (isFinal && !isDemo) {
             try {
+                // Dynamic import — only loaded when actually saving to Firestore
+                const { adminDb } = await import("@/lib/firebase-admin");
                 const transcriptsRef = adminDb.collection(`sessions/${sessionId}/transcripts`);
                 await transcriptsRef.add({
                     sessionId,

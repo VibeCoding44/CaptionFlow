@@ -15,10 +15,10 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { sessionService } from "@/lib/services/sessions";
 import { useOrganization } from "@/context/OrganizationContext";
 import { Session } from "@/types";
 import { formatDistanceToNow } from "date-fns";
+import { isDemo, DEMO_SESSIONS } from "@/lib/demo";
 
 // Mock data for initial dashboard before load
 const initialStats = [
@@ -63,14 +63,21 @@ export default function DashboardPage() {
             }
 
             try {
-                const sessions = await sessionService.getSessions(currentOrganization.id);
-                setRecentSessions(sessions.slice(0, 5)); // Get top 5
+                // ── Demo Mode: use mock data ──────────────────
+                let sessions: Session[];
+                if (isDemo) {
+                    sessions = DEMO_SESSIONS;
+                } else {
+                    const { sessionService } = await import("@/lib/services/sessions");
+                    sessions = await sessionService.getSessions(currentOrganization.id);
+                }
+                // ──────────────────────────────────────────────
 
-                // Find first active session
+                setRecentSessions(sessions.slice(0, 5));
+
                 const active = sessions.find(s => s.status === "live");
                 setActiveSession(active || null);
 
-                // Calculate basic stats
                 const totalLangs = new Set<string>();
                 sessions.forEach(s => {
                     totalLangs.add(s.sourceLanguage);
@@ -86,7 +93,7 @@ export default function DashboardPage() {
                     },
                     {
                         label: "Active Displays",
-                        value: "0", // Will wire up in displays section
+                        value: "0",
                         icon: MonitorPlay,
                         color: "from-amber-500 to-amber-600",
                     },
@@ -98,7 +105,7 @@ export default function DashboardPage() {
                     },
                     {
                         label: "Hours Captioned",
-                        value: "0h", // Placeholder until phase 3
+                        value: "0h",
                         icon: Clock,
                         color: "from-violet-500 to-violet-600",
                     },

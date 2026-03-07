@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import { isDemo } from "@/lib/demo";
 
 export default function HomePage() {
   const { user, loading } = useAuth();
@@ -10,7 +11,8 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!loading) {
-      if (user) {
+      // Demo mode: always go straight to dashboard
+      if (isDemo || user) {
         router.push("/dashboard");
       } else {
         router.push("/login");
