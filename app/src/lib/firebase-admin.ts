@@ -4,9 +4,9 @@ import { getFirestore } from "firebase-admin/firestore";
 
 const isDemo = process.env.NEXT_PUBLIC_APP_MODE === "demo";
 
-let adminApp: ReturnType<typeof initializeApp> | null = null;
-let adminAuth: ReturnType<typeof getAuth> | any = null;
-let adminDb: ReturnType<typeof getFirestore> | any = null;
+let adminApp: any = null;
+let adminAuth: any = null;
+let adminDb: any = null;
 
 if (!isDemo) {
     adminApp =

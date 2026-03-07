@@ -1,12 +1,12 @@
-import { initializeApp, getApps } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
+import { getAuth, type Auth } from "firebase/auth";
+import { getFirestore, type Firestore } from "firebase/firestore";
 
 const isDemo = process.env.NEXT_PUBLIC_APP_MODE === "demo";
 
-let app: ReturnType<typeof initializeApp> | null = null;
-let auth: ReturnType<typeof getAuth> | null = null;
-let db: ReturnType<typeof getFirestore> | null = null;
+let app: FirebaseApp = null as unknown as FirebaseApp;
+let auth: Auth = null as unknown as Auth;
+let db: Firestore = null as unknown as Firestore;
 
 if (!isDemo) {
     const firebaseConfig = {
@@ -25,6 +25,6 @@ if (!isDemo) {
     db = getFirestore(app);
 }
 
-// These exports will be null in demo mode — callers should never
-// reach Firebase code paths when NEXT_PUBLIC_APP_MODE === "demo"
+// In demo mode these are null at runtime, but typed as non-null
+// because demo mode guards prevent Firebase code paths from executing.
 export { app, auth, db };
