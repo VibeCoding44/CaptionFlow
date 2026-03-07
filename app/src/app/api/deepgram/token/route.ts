@@ -22,7 +22,7 @@ export async function GET(request: Request) {
         console.log(`[Demo] Token request from ${ip} — ${remaining} remaining`);
 
         // In demo mode, skip Firebase auth and go straight to returning the key
-        const apiKey = process.env["DEEPGRAM_API_KEY"];
+        const apiKey = process.env.DEEPGRAM_API_KEY;
         if (!apiKey) {
             return NextResponse.json(
                 { error: "Deepgram API key not configured" },
@@ -51,7 +51,7 @@ export async function GET(request: Request) {
     }
 
     // Return the Deepgram API key
-    const apiKey = process.env["DEEPGRAM_API_KEY"];
+    const apiKey = process.env.DEEPGRAM_API_KEY;
 
     if (!apiKey) {
         console.error("DEEPGRAM_API_KEY is not defined in the environment variables.");
