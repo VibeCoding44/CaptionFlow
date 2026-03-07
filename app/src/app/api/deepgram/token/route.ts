@@ -1,8 +1,26 @@
 import { NextResponse } from "next/server";
 import { adminAuth } from "@/lib/firebase-admin";
+import { checkDemoRateLimit } from "@/lib/rate-limit";
+
+const isDemo = process.env.NEXT_PUBLIC_APP_MODE === "demo";
+const DEMO_TOKEN_LIMIT = 5; // Max 5 token requests per IP per day
 
 export async function GET(request: Request) {
-    console.log("Deepgram token route called!");
+    // ── Demo Mode Rate Limit ───────────────────────────────
+    if (isDemo) {
+        const ip = request.headers.get("x-forwarded-for") || "unknown";
+        const { allowed, remaining } = checkDemoRateLimit(ip, DEMO_TOKEN_LIMIT);
+
+        if (!allowed) {
+            return NextResponse.json(
+                { error: "Demo limit reached (5 sessions/day). Sign up for full access!" },
+                { status: 429 }
+            );
+        }
+        console.log(`[Demo] Token request from ${ip} — ${remaining} remaining`);
+    }
+    // ───────────────────────────────────────────────────────
+
     // 1. Authenticate the request
     const authHeader = request.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {

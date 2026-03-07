@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPusherServer } from "@/lib/pusher-server";
 import { getSessionChannel, CAPTION_EVENT } from "@/lib/pusher-client";
 import { adminDb } from "@/lib/firebase-admin";
+import { checkDemoRateLimit } from "@/lib/rate-limit";
+
+const isDemo = process.env.NEXT_PUBLIC_APP_MODE === "demo";
+const DEMO_BROADCAST_LIMIT = 50; // Max 50 broadcast calls per IP per day
 
 // Google Cloud Translation — use the simpler v2 basic API
 import { v2 } from "@google-cloud/translate";
@@ -31,6 +35,19 @@ interface BroadcastRequest {
  */
 export async function POST(req: NextRequest) {
     try {
+        // ── Demo Mode Rate Limit ───────────────────────────
+        if (isDemo) {
+            const ip = req.headers.get("x-forwarded-for") || "unknown";
+            const { allowed } = checkDemoRateLimit(ip, DEMO_BROADCAST_LIMIT);
+            if (!allowed) {
+                return NextResponse.json(
+                    { error: "Demo limit reached. Sign up for full access!" },
+                    { status: 429 }
+                );
+            }
+        }
+        // ─────────────────────────────────────────────────────
+
         const body: BroadcastRequest = await req.json();
         const { sessionId, text, sourceLanguage, targetLanguages, isFinal } = body;
 
@@ -78,6 +95,12 @@ export async function POST(req: NextRequest) {
 
         // Save final transcripts with translations to Firestore
         if (isFinal) {
+            // In demo mode: don't pollute the real database
+            if (isDemo) {
+                console.log("[Demo] Skipping Firestore transcript save");
+                return NextResponse.json({ success: true, translations });
+            }
+
             try {
                 const transcriptsRef = adminDb.collection(`sessions/${sessionId}/transcripts`);
                 await transcriptsRef.add({

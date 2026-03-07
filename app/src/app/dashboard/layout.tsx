@@ -68,8 +68,17 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
         );
     }
 
+    const isDemo = process.env.NEXT_PUBLIC_APP_MODE === "demo";
+
     return (
         <div className="flex flex-col md:flex-row h-screen bg-zinc-950">
+            {/* Demo Mode Banner */}
+            {isDemo && (
+                <div className="w-full bg-gradient-to-r from-amber-500/90 to-orange-500/90 text-white text-center py-2 px-4 text-sm font-medium shrink-0 z-50">
+                    🚀 You&apos;re viewing the demo &mdash; functionality is limited.
+                </div>
+            )}
+
             {/* Mobile Header */}
             <header className="flex md:hidden items-center justify-between p-4 border-b border-zinc-800/60 bg-zinc-950 shrink-0">
                 <div className="flex items-center gap-2">
