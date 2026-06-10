@@ -47,16 +47,18 @@ export async function POST(
         }
 
         const sessionData = sessionSnap.data();
-        const orgId = sessionData?.orgId;
+        // Sessions store the org under `organizationId` (matches the rest of the
+        // codebase); the previous `orgId` lookup was always undefined → 500.
+        const organizationId = sessionData?.organizationId;
 
-        if (!orgId) {
+        if (!organizationId) {
             return NextResponse.json({ error: "Invalid session data" }, { status: 500 });
         }
 
         // 4. Authorize: Check if the user is a member of the session's organization
         const memberSnap = await adminDb
             .collection("organizationMembers")
-            .where("orgId", "==", orgId)
+            .where("organizationId", "==", organizationId)
             .where("userId", "==", uid)
             .limit(1)
             .get();

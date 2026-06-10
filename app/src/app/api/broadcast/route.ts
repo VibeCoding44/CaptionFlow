@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPusherServer } from "@/lib/pusher-server";
 import { getSessionChannel, CAPTION_EVENT } from "@/lib/pusher-client";
 import { checkDemoRateLimit } from "@/lib/rate-limit";
+import { getClientIp, verifyRequestAuth, userCanBroadcast } from "@/lib/auth-helpers";
 
 const isDemo = process.env.NEXT_PUBLIC_APP_MODE === "demo";
 const DEMO_BROADCAST_LIMIT = 50; // Max 50 broadcast calls per IP per day
@@ -34,19 +35,6 @@ interface BroadcastRequest {
  */
 export async function POST(req: NextRequest) {
     try {
-        // ── Demo Mode Rate Limit ───────────────────────────
-        if (isDemo) {
-            const ip = req.headers.get("x-forwarded-for") || "unknown";
-            const { allowed } = checkDemoRateLimit(ip, DEMO_BROADCAST_LIMIT);
-            if (!allowed) {
-                return NextResponse.json(
-                    { error: "Demo limit reached. Sign up for full access!" },
-                    { status: 429 }
-                );
-            }
-        }
-        // ─────────────────────────────────────────────────────
-
         const body: BroadcastRequest = await req.json();
         const { sessionId, text, sourceLanguage, targetLanguages, isFinal } = body;
 
@@ -57,10 +45,41 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // Build translations map
+        // ── Authorization ──────────────────────────────────
+        if (isDemo) {
+            // Demo: no auth, but rate-limit by client IP.
+            const ip = getClientIp(req);
+            const { allowed } = checkDemoRateLimit(ip, DEMO_BROADCAST_LIMIT);
+            if (!allowed) {
+                return NextResponse.json(
+                    { error: "Demo limit reached. Sign up for full access!" },
+                    { status: 429 }
+                );
+            }
+        } else {
+            // Production: require a valid Firebase ID token AND that the caller
+            // is allowed to broadcast into this session (creator or org member).
+            const auth = await verifyRequestAuth(req);
+            if (!auth) {
+                return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+            }
+            const allowed = await userCanBroadcast(auth.uid, sessionId);
+            if (!allowed) {
+                return NextResponse.json(
+                    { error: "Forbidden: not authorized for this session" },
+                    { status: 403 }
+                );
+            }
+        }
+        // ─────────────────────────────────────────────────────
+
+        // Build translations map.
+        // Only translate FINAL transcripts — interim results change rapidly and
+        // would multiply paid Google Translate calls for text that's about to be
+        // replaced. Interim broadcasts carry the source text with no translations.
         const translations: Record<string, string> = {};
 
-        if (targetLanguages && targetLanguages.length > 0) {
+        if (isFinal && targetLanguages && targetLanguages.length > 0) {
             const translationPromises = targetLanguages.map(async (lang) => {
                 try {
                     const [translated] = await translateClient.translate(text, {
