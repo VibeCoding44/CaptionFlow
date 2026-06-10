@@ -94,6 +94,34 @@ function AudienceJoinContent() {
         setIsAutoScroll(atBottom);
     };
 
+    // Seed the language picker from the session's configured target languages
+    // so attendees can pick their language immediately, before the speaker
+    // starts. Broadcast-discovered languages still merge in afterward.
+    useEffect(() => {
+        if (!sessionId) return;
+        let cancelled = false;
+
+        (async () => {
+            try {
+                const res = await fetch(`/api/sessions/${sessionId}/info`);
+                if (!res.ok || cancelled) return;
+                const info = await res.json();
+
+                if (Array.isArray(info.targetLanguages) && info.targetLanguages.length > 0) {
+                    setAvailableLanguages((prev) =>
+                        Array.from(new Set([...prev, ...info.targetLanguages]))
+                    );
+                }
+                if (info.name) setSessionName(info.name);
+                if (info.status) setSessionStatus(info.status);
+            } catch {
+                // Non-fatal: fall back to discovering languages from broadcasts.
+            }
+        })();
+
+        return () => { cancelled = true; };
+    }, [sessionId]);
+
     // Pusher listener
     useEffect(() => {
         if (!sessionId) return;
