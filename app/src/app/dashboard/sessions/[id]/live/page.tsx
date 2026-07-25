@@ -233,6 +233,24 @@ export default function LiveSessionPage() {
         }
     }, []);
 
+    // Broadcast a status change over Pusher (endpoint requires operator auth)
+    const broadcastStatus = async (sessionId: string, status: string) => {
+        try {
+            const { auth } = await import("@/lib/firebase");
+            const idToken = await auth.currentUser?.getIdToken();
+            await fetch("/api/broadcast/status", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+                },
+                body: JSON.stringify({ sessionId, status }),
+            });
+        } catch (err) {
+            console.error("Status broadcast failed:", err);
+        }
+    };
+
     // Toggle broadcast
     const handleToggleBroadcast = async () => {
         if (!session) return;
@@ -251,11 +269,7 @@ export default function LiveSessionPage() {
                 setError(null);
 
                 // Broadcast the status change over Pusher
-                fetch("/api/broadcast/status", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ sessionId: session.id, status: "completed" })
-                }).catch(console.error);
+                void broadcastStatus(session.id, "completed");
             } catch (err) {
                 console.error("Error stopping broadcast:", err);
             }
@@ -274,11 +288,7 @@ export default function LiveSessionPage() {
                 setError(null);
 
                 // Broadcast the status change over Pusher
-                fetch("/api/broadcast/status", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ sessionId: session.id, status: "live" })
-                }).catch(console.error);
+                void broadcastStatus(session.id, "live");
 
                 // Create and start the captioning pipeline
                 const pipeline = new CaptionPipeline({

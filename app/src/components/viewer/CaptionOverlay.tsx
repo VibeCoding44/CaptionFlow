@@ -1,15 +1,8 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
-import { getPusherClient, getSessionChannel, CAPTION_EVENT, STATUS_EVENT } from "@/lib/pusher-client";
+import { useEffect, useRef, useCallback } from "react";
+import { useCaptionStream, captionDisplayText, type CaptionStreamLine } from "@/hooks/useCaptionStream";
 import { Display } from "@/types";
-
-interface CaptionLine {
-    id: string;
-    text: string;
-    translations: Record<string, string>;
-    timestamp: number;
-}
 
 interface CaptionOverlayProps {
     sessionId: string;
@@ -24,10 +17,7 @@ export default function CaptionOverlay({
     transparentBg = false,
     selectedLanguage = null,
 }: CaptionOverlayProps) {
-    const [lines, setLines] = useState<CaptionLine[]>([]);
-    const [interimData, setInterimData] = useState<{ text: string, translations: Record<string, string> } | null>(null);
-    const [connected, setConnected] = useState(false);
-    const [sessionStatus, setSessionStatus] = useState("live");
+    const { lines, interim: interimData, connected } = useCaptionStream(sessionId, { clearOnComplete: true });
     const scrollRef = useRef<HTMLDivElement>(null);
 
     // Auto-scroll to bottom when new captions arrive
@@ -35,68 +25,8 @@ export default function CaptionOverlay({
         scrollRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }, [lines, interimData]);
 
-    // Subscribe to Pusher channel
-    useEffect(() => {
-        if (!sessionId) return;
-
-        const pusher = getPusherClient();
-        const channel = pusher.subscribe(getSessionChannel(sessionId));
-
-        channel.bind("pusher:subscription_succeeded", () => {
-            setConnected(true);
-        });
-
-        channel.bind(CAPTION_EVENT, (data: {
-            text: string;
-            sourceLanguage: string;
-            translations: Record<string, string>;
-            isFinal: boolean;
-            timestamp: number;
-        }) => {
-            if (data.isFinal) {
-                setLines((prev) => {
-                    // Keep only the last 50 lines to avoid memory issues
-                    const updated = [
-                        ...prev,
-                        {
-                            id: `line-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-                            text: data.text,
-                            translations: data.translations,
-                            timestamp: data.timestamp,
-                        },
-                    ];
-                    return updated.slice(-50);
-                });
-                setInterimData(null);
-            } else {
-                setInterimData({ text: data.text, translations: data.translations });
-            }
-        });
-
-        channel.bind(STATUS_EVENT, (data: { status: string }) => {
-            if (data.status) {
-                setSessionStatus(data.status);
-                if (data.status === "completed") {
-                    setLines([]);
-                    setInterimData(null);
-                }
-            }
-        });
-
-        return () => {
-            channel.unbind_all();
-            pusher.unsubscribe(getSessionChannel(sessionId));
-            setConnected(false);
-        };
-    }, [sessionId]);
-
     const getDisplayText = useCallback(
-        (line: CaptionLine) => {
-            if (selectedLanguage && line.translations[selectedLanguage]) {
-                return line.translations[selectedLanguage];
-            }
-            return line.text;
-        },
+        (line: CaptionStreamLine) => captionDisplayText(line, selectedLanguage),
         [selectedLanguage]
     );
 
