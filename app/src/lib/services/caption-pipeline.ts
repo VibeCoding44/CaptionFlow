@@ -89,11 +89,13 @@ export class CaptionPipeline {
             const tokenRes = await fetch("/api/deepgram/token", { headers });
             const data = await tokenRes.json();
 
-            if (!tokenRes.ok || !data.key) {
+            // The endpoint returns a short-lived access token (`token`), not the
+            // master key. `key` is kept as a fallback alias for older responses.
+            const accessToken = data.token || data.key;
+            if (!tokenRes.ok || !accessToken) {
                 const errMsg = data.error || tokenRes.statusText || 'Unknown error';
                 throw new Error(`Failed to retrieve Deepgram token: ${errMsg}`);
             }
-            const key = data.key;
 
             // 3. Open WebSocket to Deepgram
             const dgUrl = new URL("wss://api.deepgram.com/v1/listen");
@@ -116,7 +118,9 @@ export class CaptionPipeline {
                 }
             }
 
-            this.dgSocket = new WebSocket(dgUrl.toString(), ["token", key]);
+            // Short-lived grant tokens authenticate via the "bearer" subprotocol
+            // (the raw-key path would use ["token", key]).
+            this.dgSocket = new WebSocket(dgUrl.toString(), ["bearer", accessToken]);
 
             this.dgSocket.onopen = () => {
                 this.setStatus("listening");
@@ -254,9 +258,21 @@ export class CaptionPipeline {
 
         // Fire to backend for translation + Pusher broadcast
         try {
+            const headers: Record<string, string> = { "Content-Type": "application/json" };
+
+            // Production: the broadcast endpoint requires a Firebase ID token so
+            // only authorized operators can inject captions into a session.
+            if (process.env.NEXT_PUBLIC_APP_MODE !== "demo") {
+                const { auth } = await import("@/lib/firebase");
+                const user = auth.currentUser;
+                if (user) {
+                    headers["Authorization"] = `Bearer ${await user.getIdToken()}`;
+                }
+            }
+
             const res = await fetch("/api/broadcast", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers,
                 body: JSON.stringify({
                     sessionId: this.options.sessionId,
                     text,

@@ -1,16 +1,46 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@deepgram/sdk";
 import { checkDemoRateLimit } from "@/lib/rate-limit";
+import { getClientIp, verifyRequestAuth } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
 const DEMO_TOKEN_LIMIT = 5; // Max 5 token requests per IP per day
+const TOKEN_TTL_SECONDS = 30; // Short-lived: the WebSocket connects immediately
+
+/**
+ * Mint a short-lived Deepgram access token (never expose the master key).
+ * The browser opens the Deepgram WebSocket with ["bearer", token].
+ */
+async function mintDeepgramToken(): Promise<
+    { ok: true; token: string; expiresIn: number } | { ok: false; status: number; error: string }
+> {
+    const apiKey = process.env.DEEPGRAM_API_KEY;
+    if (!apiKey) {
+        console.error("DEEPGRAM_API_KEY is not defined in the environment variables.");
+        return { ok: false, status: 500, error: "Deepgram API key not configured" };
+    }
+
+    try {
+        const deepgram = createClient(apiKey);
+        const { result, error } = await deepgram.auth.grantToken({ ttl_seconds: TOKEN_TTL_SECONDS });
+        if (error || !result?.access_token) {
+            console.error("Failed to mint Deepgram grant token:", error);
+            return { ok: false, status: 502, error: "Failed to mint Deepgram token" };
+        }
+        return { ok: true, token: result.access_token, expiresIn: result.expires_in };
+    } catch (err) {
+        console.error("Error minting Deepgram grant token:", err);
+        return { ok: false, status: 502, error: "Failed to mint Deepgram token" };
+    }
+}
 
 export async function GET(request: Request) {
     const isDemo = process.env.NEXT_PUBLIC_APP_MODE === "demo";
 
     // ── Demo Mode: Rate limit + skip Firebase auth ──────────
     if (isDemo) {
-        const ip = request.headers.get("x-forwarded-for") || "unknown";
+        const ip = getClientIp(request);
         const { allowed, remaining } = checkDemoRateLimit(ip, DEMO_TOKEN_LIMIT);
 
         if (!allowed) {
@@ -20,46 +50,21 @@ export async function GET(request: Request) {
             );
         }
         console.log(`[Demo] Token request from ${ip} — ${remaining} remaining`);
-
-        // In demo mode, skip Firebase auth and go straight to returning the key
-        const apiKey = process.env.DEEPGRAM_API_KEY;
-        if (!apiKey) {
-            return NextResponse.json(
-                { error: "Deepgram API key not configured" },
-                { status: 500 }
-            );
+    } else {
+        // ── Production: Authenticate via Firebase Admin ──────
+        const auth = await verifyRequestAuth(request);
+        if (!auth) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
-        return NextResponse.json({ key: apiKey });
-    }
-    // ───────────────────────────────────────────────────────
-
-    // Production: Authenticate via Firebase Admin
-    const { adminAuth } = await import("@/lib/firebase-admin");
-
-    const authHeader = request.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-        console.error("Missing or invalid Authorization header");
-        return NextResponse.json({ error: "Unauthorized: Missing header" }, { status: 401 });
     }
 
-    const token = authHeader.split("Bearer ")[1];
-    try {
-        await adminAuth.verifyIdToken(token);
-    } catch (error) {
-        console.error("Token verification failed:", error);
-        return NextResponse.json({ error: `Unauthorized: ${error}` }, { status: 401 });
+    const minted = await mintDeepgramToken();
+    if (!minted.ok) {
+        return NextResponse.json({ error: minted.error }, { status: minted.status });
     }
 
-    // Return the Deepgram API key
-    const apiKey = process.env.DEEPGRAM_API_KEY;
-
-    if (!apiKey) {
-        console.error("DEEPGRAM_API_KEY is not defined in the environment variables.");
-        return NextResponse.json(
-            { error: "Deepgram API key not configured" },
-            { status: 500 }
-        );
-    }
-
-    return NextResponse.json({ key: apiKey });
+    // `token` is the short-lived access token. `key` is kept as an alias for
+    // backwards-compat with any client still reading the old field — it now
+    // also holds the short-lived token, never the master API key.
+    return NextResponse.json({ token: minted.token, key: minted.token, expiresIn: minted.expiresIn });
 }
