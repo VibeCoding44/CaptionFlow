@@ -20,7 +20,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useOrganization } from "@/context/OrganizationContext";
 import { Session } from "@/types";
-import { isDemo, DEMO_SESSIONS } from "@/lib/demo";
 import { format, differenceInMinutes, formatDistanceToNow } from "date-fns";
 import {
     DropdownMenu,
@@ -51,13 +50,8 @@ export default function SessionsPage() {
                 return;
             }
             try {
-                let data: Session[];
-                if (isDemo) {
-                    data = DEMO_SESSIONS;
-                } else {
-                    const { sessionService } = await import("@/lib/services/sessions");
-                    data = await sessionService.getSessions(currentOrganization.id);
-                }
+                const { sessionService } = await import("@/lib/services/sessions");
+                const data: Session[] = await sessionService.getSessions(currentOrganization.id);
                 setSessions(data);
             } catch (error) {
                 console.error("Error loading sessions:", error);
@@ -90,14 +84,9 @@ export default function SessionsPage() {
 
         setIsDeleting(true);
         try {
-            if (isDemo) {
-                // In demo mode, just remove from local state
-                setSessions((prev) => prev.filter((s) => s.id !== deleteSessionId));
-            } else {
-                const { sessionService } = await import("@/lib/services/sessions");
-                await sessionService.deleteSession(deleteSessionId);
-                setSessions((prev) => prev.filter((s) => s.id !== deleteSessionId));
-            }
+            const { sessionService } = await import("@/lib/services/sessions");
+            await sessionService.deleteSession(deleteSessionId);
+            setSessions((prev) => prev.filter((s) => s.id !== deleteSessionId));
         } catch (error) {
             console.error("Error deleting session:", error);
             alert("Failed to delete session. Please check permissions and try again.");

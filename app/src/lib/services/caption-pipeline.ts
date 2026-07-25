@@ -71,20 +71,17 @@ export class CaptionPipeline {
                 },
             });
 
-            // 2. Get Deepgram API key from our secure endpoint
-            const isDemo = process.env.NEXT_PUBLIC_APP_MODE === "demo";
-            const headers: Record<string, string> = {};
-
-            if (!isDemo) {
-                // Production: attach Firebase auth token
-                const { auth } = await import("@/lib/firebase");
-                const user = auth.currentUser;
-                if (!user) {
-                    throw new Error("User not authenticated");
-                }
-                const token = await user.getIdToken();
-                headers["Authorization"] = `Bearer ${token}`;
+            // 2. Get a short-lived Deepgram token from our secure endpoint,
+            // authenticated with the caller's Firebase ID token.
+            const { auth } = await import("@/lib/firebase");
+            const user = auth.currentUser;
+            if (!user) {
+                throw new Error("User not authenticated");
             }
+            const token = await user.getIdToken();
+            const headers: Record<string, string> = {
+                Authorization: `Bearer ${token}`,
+            };
 
             const tokenRes = await fetch("/api/deepgram/token", { headers });
             const data = await tokenRes.json();
@@ -260,14 +257,12 @@ export class CaptionPipeline {
         try {
             const headers: Record<string, string> = { "Content-Type": "application/json" };
 
-            // Production: the broadcast endpoint requires a Firebase ID token so
-            // only authorized operators can inject captions into a session.
-            if (process.env.NEXT_PUBLIC_APP_MODE !== "demo") {
-                const { auth } = await import("@/lib/firebase");
-                const user = auth.currentUser;
-                if (user) {
-                    headers["Authorization"] = `Bearer ${await user.getIdToken()}`;
-                }
+            // The broadcast endpoint requires a Firebase ID token so only
+            // authorized operators can inject captions into a session.
+            const { auth } = await import("@/lib/firebase");
+            const user = auth.currentUser;
+            if (user) {
+                headers["Authorization"] = `Bearer ${await user.getIdToken()}`;
             }
 
             const res = await fetch("/api/broadcast", {

@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 
-const isDemo = process.env.NEXT_PUBLIC_APP_MODE === "demo";
-
 export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
@@ -13,14 +11,6 @@ export async function GET(request: Request) {
                 { error: "Missing required parameters `slug` or `orgId`" },
                 { status: 400 }
             );
-        }
-
-        // Demo mode: skip Firestore check, just return the slug as-is
-        if (isDemo) {
-            return NextResponse.json({
-                uniqueSlug: slug,
-                available: true,
-            });
         }
 
         const { adminDb } = await import("@/lib/firebase-admin");

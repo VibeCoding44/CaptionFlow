@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPusherServer } from "@/lib/pusher-server";
 import { getSessionChannel, CAPTION_EVENT } from "@/lib/pusher-client";
-import { checkDemoRateLimit } from "@/lib/rate-limit";
-import { getClientIp, verifyRequestAuth, userCanBroadcast } from "@/lib/auth-helpers";
-
-const isDemo = process.env.NEXT_PUBLIC_APP_MODE === "demo";
-const DEMO_BROADCAST_LIMIT = 50; // Max 50 broadcast calls per IP per day
+import { verifyRequestAuth, userCanBroadcast } from "@/lib/auth-helpers";
 
 // Google Cloud Translation — use the simpler v2 basic API
 import { v2 } from "@google-cloud/translate";
@@ -46,30 +42,18 @@ export async function POST(req: NextRequest) {
         }
 
         // ── Authorization ──────────────────────────────────
-        if (isDemo) {
-            // Demo: no auth, but rate-limit by client IP.
-            const ip = getClientIp(req);
-            const { allowed } = checkDemoRateLimit(ip, DEMO_BROADCAST_LIMIT);
-            if (!allowed) {
-                return NextResponse.json(
-                    { error: "Demo limit reached. Sign up for full access!" },
-                    { status: 429 }
-                );
-            }
-        } else {
-            // Production: require a valid Firebase ID token AND that the caller
-            // is allowed to broadcast into this session (creator or org member).
-            const auth = await verifyRequestAuth(req);
-            if (!auth) {
-                return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-            }
-            const allowed = await userCanBroadcast(auth.uid, sessionId);
-            if (!allowed) {
-                return NextResponse.json(
-                    { error: "Forbidden: not authorized for this session" },
-                    { status: 403 }
-                );
-            }
+        // Require a valid Firebase ID token AND that the caller is allowed
+        // to broadcast into this session (creator or org member).
+        const auth = await verifyRequestAuth(req);
+        if (!auth) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+        const allowed = await userCanBroadcast(auth.uid, sessionId);
+        if (!allowed) {
+            return NextResponse.json(
+                { error: "Forbidden: not authorized for this session" },
+                { status: 403 }
+            );
         }
         // ─────────────────────────────────────────────────────
 
@@ -111,7 +95,7 @@ export async function POST(req: NextRequest) {
         });
 
         // Save final transcripts with translations to Firestore
-        if (isFinal && !isDemo) {
+        if (isFinal) {
             try {
                 // Dynamic import — only loaded when actually saving to Firestore
                 const { adminDb } = await import("@/lib/firebase-admin");

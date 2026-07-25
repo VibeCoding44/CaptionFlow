@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const isDemo = process.env.NEXT_PUBLIC_APP_MODE === "demo";
-
 /**
  * GET /api/sessions/[id]/info
  *
@@ -20,15 +18,6 @@ export async function GET(
 
     if (!id) {
         return NextResponse.json({ error: "Missing session ID" }, { status: 400 });
-    }
-
-    if (isDemo) {
-        return NextResponse.json({
-            name: "Demo Session",
-            sourceLanguage: "en",
-            targetLanguages: ["es", "fr"],
-            status: "live",
-        });
     }
 
     try {
