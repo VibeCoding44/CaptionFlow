@@ -68,21 +68,6 @@ export const orgService = {
         return querySnapshot.docs[0].data() as Organization;
     },
 
-    // Invite user (mock: we just create a member doc if the user exists or not, but typically you'd send an email. For now, we'll just return a success)
-    async inviteMember(orgId: string, email: string, role: "owner" | "admin" | "operator"): Promise<void> {
-        const tempId = `inv_${Date.now()}`;
-        const newMember: OrganizationMember = {
-            id: tempId,
-            userId: "pending_invite",
-            organizationId: orgId,
-            role,
-            joinedAt: Date.now()
-        };
-
-        const docRef = doc(db, "organizationMembers", tempId);
-        await setDoc(docRef, newMember);
-    },
-
     // Create a new organization
     async createOrganization(name: string, userId: string): Promise<string> {
         // We use a generated ID from Firestore, but since we are doing it client side for now we can just use doc() with no path or Date.now()
@@ -106,6 +91,7 @@ export const orgService = {
             id: orgId,
             name,
             slug,
+            createdBy: userId, // security rules use this to authorize the bootstrap owner membership
             createdAt: Date.now(),
             settings: {
                 defaultSourceLanguage: "en",
@@ -146,14 +132,16 @@ export const orgService = {
 
     // Join an organization using an invite code
     async joinWithInviteCode(code: string, userId: string): Promise<string> {
+        // Invite docs are keyed by code; a direct get keeps the collection
+        // unlistable (security rules deny list on organizationInvites).
         const inviteRef = doc(db, "organizationInvites", code);
-        const inviteSnap = await getDocs(query(collection(db, "organizationInvites"), where("code", "==", code)));
+        const inviteDoc = await getDoc(inviteRef);
 
-        if (inviteSnap.empty) {
+        if (!inviteDoc.exists()) {
             throw new Error("Invalid or expired invite code");
         }
 
-        const inviteData = inviteSnap.docs[0].data();
+        const inviteData = inviteDoc.data();
 
         if (inviteData.expiresAt < Date.now()) {
             throw new Error("This invite code has expired");
@@ -176,6 +164,7 @@ export const orgService = {
             userId: userId,
             organizationId: inviteData.organizationId,
             role: inviteData.role,
+            inviteCode: code, // security rules validate membership creation against this invite
             joinedAt: Date.now()
         });
 

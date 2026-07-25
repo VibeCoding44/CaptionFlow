@@ -33,10 +33,12 @@ service cloud.firestore {
 
 
     // ─── Users Collection ─────────────────────────────────────────
-    // Users can read profile documents to see their team members
-    // Users can write only their own profile document
+    // Users can fetch individual profiles (team pages resolve co-members by
+    // UID) but may never list the whole collection.
+    // Users can write only their own profile document.
     match /users/{userId} {
-      allow read: if isSignedIn();
+      allow get: if isSignedIn();
+      allow list: if false;
       allow create: if isSignedIn() && uid() == userId;
       allow update: if isSignedIn() && uid() == userId;
       allow delete: if false;
@@ -44,33 +46,51 @@ service cloud.firestore {
 
     // ─── Organizations Collection ─────────────────────────────────
     // Read: Only members can read the org.
-    // Create: Any authenticated user can create an org.
+    // Create: Any authenticated user, but only as themselves (createdBy is
+    //         what authorizes the bootstrap owner membership below).
     // Update: Only members can update the org.
     // Delete: Not allowed from client.
     match /organizations/{orgId} {
       allow read: if isOrgMember(orgId);
-      allow create: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.createdBy == uid();
       allow update: if isOrgMember(orgId);
       allow delete: if false;
     }
 
     // ─── Organization Members Collection ──────────────────────────
-    // Read: A user can read their own membership documents.
-    // Create: Allowed for auth users (needed for initial org creation & invites).
-    // Update/Delete: Only if the user is deleting/updating their own membership (leaving org)
-    // or if handled via an admin backend.
+    // Membership docs are keyed {orgId}_{uid}. Creation is only allowed for
+    // YOUR OWN membership, and only via one of the two legitimate flows:
+    //   1. Bootstrap: you created the organization (org.createdBy == you),
+    //      taking the "owner" role.
+    //   2. Invite: the membership references a live invite code for that org
+    //      and takes exactly the invited role.
+    // Anything else (writing yourself into an arbitrary org) is denied.
     match /organizationMembers/{memberId} {
-      // Allow reading if the requesting user's UID matches the userId in the document OR via memberId string match
-      // The memberId match allows fetching non-existent member documents without throwing an error
-      // The resource.data.userId match allows collection queries (where "userId" == uid) to succeed
-      // We also allow reading if the user is a member of the organization this record belongs to.
       allow read: if isSignedIn() && (
-        memberId.matches('.*_' + uid()) || 
+        memberId.matches('.*_' + uid()) ||
         resource.data.userId == uid() ||
         isMemberOfResourceOrg()
       );
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && resource.data.userId == uid();
+      allow create: if isSignedIn()
+        && request.resource.data.userId == uid()
+        && memberId == request.resource.data.organizationId + '_' + uid()
+        && (
+          (
+            // Bootstrap owner for an org you just created
+            request.resource.data.role == 'owner'
+            && get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId)).data.createdBy == uid()
+          ) || (
+            // Joining through a valid, unexpired invite for this org
+            request.resource.data.inviteCode is string
+            && exists(/databases/$(database)/documents/organizationInvites/$(request.resource.data.inviteCode))
+            && get(/databases/$(database)/documents/organizationInvites/$(request.resource.data.inviteCode)).data.organizationId == request.resource.data.organizationId
+            && get(/databases/$(database)/documents/organizationInvites/$(request.resource.data.inviteCode)).data.role == request.resource.data.role
+            && get(/databases/$(database)/documents/organizationInvites/$(request.resource.data.inviteCode)).data.expiresAt > request.time.toMillis()
+          )
+        );
+      // No client-side updates: prevents members from escalating their own role.
+      allow update: if false;
+      // Leaving an org (deleting your own membership) is allowed.
       allow delete: if isSignedIn() && resource.data.userId == uid();
     }
 
@@ -102,15 +122,18 @@ service cloud.firestore {
       allow read: if isMemberOfResourceOrg();
       allow create: if isMemberOfNewResourceOrg();
       allow update: if isMemberOfResourceOrg();
-      allow delete: if false;
+      // The dashboard supports deleting displays; scope it to org members.
+      allow delete: if isMemberOfResourceOrg();
     }
 
     // ─── Organization Invites Collection ──────────────────────────
+    // Invites are keyed by their code: fetching one requires knowing the
+    // code, and listing the collection (code harvesting) is denied.
     match /organizationInvites/{code} {
-      allow read: if isSignedIn();
+      allow get: if isSignedIn();
+      allow list: if false;
       allow create: if isMemberOfNewResourceOrg();
       allow update, delete: if false;
     }
   }
 }
-
