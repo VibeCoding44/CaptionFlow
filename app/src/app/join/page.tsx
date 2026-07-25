@@ -2,8 +2,8 @@
 
 import { Suspense, useEffect, useState, useRef } from "react";
 import { useSearchParams } from "next/navigation";
-import { getPusherClient, getSessionChannel, CAPTION_EVENT, STATUS_EVENT } from "@/lib/pusher-client";
-import { Languages, Globe, Sun, Moon, ChevronDown, Wifi } from "lucide-react";
+import { useCaptionStream, captionDisplayText } from "@/hooks/useCaptionStream";
+import { Languages, Globe, Sun, Moon, ChevronDown, Wifi, AArrowDown, AArrowUp } from "lucide-react";
 
 const LANGUAGE_LABELS: Record<string, string> = {
     en: "English",
@@ -35,20 +35,10 @@ const LANGUAGE_FLAGS: Record<string, string> = {
     th: "🇹🇭", pl: "🇵🇱", uk: "🇺🇦", sw: "🇰🇪", tl: "🇵🇭",
 };
 
-interface CaptionData {
-    text: string;
-    sourceLanguage: string;
-    translations: Record<string, string>;
-    isFinal: boolean;
-    timestamp: number;
-}
-
-interface CaptionLine {
-    id: string;
-    text: string;
-    translatedText: string;
-    timestamp: number;
-}
+// Audience-adjustable caption sizes (a11y: core audience is deaf/HoH and
+// low-vision — let them scale up well past the default).
+const FONT_SIZES = ["text-xl", "text-2xl", "text-3xl", "text-4xl", "text-5xl"];
+const DEFAULT_FONT_INDEX = 1;
 
 export default function AudienceJoinPage() {
     return (
@@ -66,15 +56,19 @@ function AudienceJoinContent() {
     const searchParams = useSearchParams();
     const sessionId = searchParams.get("session");
 
-    const [connected, setConnected] = useState(false);
+    const { lines: captions, interim, connected, sessionStatus, setSessionStatus, discoveredLanguages } =
+        useCaptionStream(sessionId);
+
     const [selectedLanguage, setSelectedLanguage] = useState<string | null>(null);
-    const [availableLanguages, setAvailableLanguages] = useState<string[]>([]);
-    const [captions, setCaptions] = useState<CaptionLine[]>([]);
-    const [interimText, setInterimText] = useState("");
+    const [seededLanguages, setSeededLanguages] = useState<string[]>([]);
     const [isDark, setIsDark] = useState(true);
     const [showLanguagePicker, setShowLanguagePicker] = useState(true);
-    const [sessionName, setSessionName] = useState("");
-    const [sessionStatus, setSessionStatus] = useState("live");
+    const [fontIndex, setFontIndex] = useState(DEFAULT_FONT_INDEX);
+
+    // Session languages configured up front + languages discovered from broadcasts
+    const availableLanguages = Array.from(new Set([...seededLanguages, ...discoveredLanguages]));
+    const fontClass = FONT_SIZES[fontIndex];
+    const interimText = interim ? captionDisplayText(interim, selectedLanguage) : "";
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const mainRef = useRef<HTMLElement>(null);
@@ -86,6 +80,22 @@ function AudienceJoinContent() {
             scrollRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
         }
     }, [captions, interimText, isAutoScroll]);
+
+    // Restore the viewer's preferred caption size
+    useEffect(() => {
+        const saved = Number(localStorage.getItem("captionflow_font_index"));
+        if (!Number.isNaN(saved) && saved >= 0 && saved < FONT_SIZES.length) {
+            setFontIndex(saved);
+        }
+    }, []);
+
+    const adjustFont = (delta: number) => {
+        setFontIndex((prev) => {
+            const next = Math.min(FONT_SIZES.length - 1, Math.max(0, prev + delta));
+            localStorage.setItem("captionflow_font_index", String(next));
+            return next;
+        });
+    };
 
     const handleScroll = (e: React.UIEvent<HTMLElement>) => {
         const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
@@ -108,11 +118,8 @@ function AudienceJoinContent() {
                 const info = await res.json();
 
                 if (Array.isArray(info.targetLanguages) && info.targetLanguages.length > 0) {
-                    setAvailableLanguages((prev) =>
-                        Array.from(new Set([...prev, ...info.targetLanguages]))
-                    );
+                    setSeededLanguages(info.targetLanguages);
                 }
-                if (info.name) setSessionName(info.name);
                 if (info.status) setSessionStatus(info.status);
             } catch {
                 // Non-fatal: fall back to discovering languages from broadcasts.
@@ -120,66 +127,7 @@ function AudienceJoinContent() {
         })();
 
         return () => { cancelled = true; };
-    }, [sessionId]);
-
-    // Pusher listener
-    useEffect(() => {
-        if (!sessionId) return;
-
-        const pusher = getPusherClient();
-        const channel = pusher.subscribe(getSessionChannel(sessionId));
-
-        setConnected(true);
-
-        channel.bind(CAPTION_EVENT, (data: CaptionData) => {
-            // Discover available languages from broadcasts
-            if (data.translations && Object.keys(data.translations).length > 0) {
-                setAvailableLanguages((prev) => {
-                    const all = new Set([...prev, ...Object.keys(data.translations)]);
-                    return Array.from(all);
-                });
-            }
-
-            // Store session source language as a hint for the name
-            if (!sessionName && data.sourceLanguage) {
-                setSessionName(data.sourceLanguage.toUpperCase());
-            }
-
-            if (data.isFinal) {
-                const displayText = selectedLanguage && data.translations[selectedLanguage]
-                    ? data.translations[selectedLanguage]
-                    : data.text;
-
-                setCaptions((prev) => [
-                    ...prev.slice(-50), // Keep last 50 lines to avoid memory issues on phones
-                    {
-                        id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-                        text: data.text,
-                        translatedText: displayText,
-                        timestamp: data.timestamp,
-                    },
-                ]);
-                setInterimText("");
-            } else {
-                const displayText = selectedLanguage && data.translations[selectedLanguage]
-                    ? data.translations[selectedLanguage]
-                    : data.text;
-                setInterimText(displayText);
-            }
-        });
-
-        channel.bind(STATUS_EVENT, (data: { status: string }) => {
-            if (data.status) {
-                setSessionStatus(data.status);
-            }
-        });
-
-        return () => {
-            channel.unbind_all();
-            pusher.unsubscribe(getSessionChannel(sessionId));
-            setConnected(false);
-        };
-    }, [sessionId, selectedLanguage, sessionName]);
+    }, [sessionId, setSessionStatus]);
 
     // No session ID
     if (!sessionId) {
@@ -266,9 +214,28 @@ function AudienceJoinContent() {
                             <ChevronDown className="w-3 h-3" />
                         </button>
 
+                        {/* Caption size controls */}
+                        <button
+                            onClick={() => adjustFont(-1)}
+                            disabled={fontIndex === 0}
+                            aria-label="Decrease caption size"
+                            className={`p-2 rounded-full transition-colors disabled:opacity-30 ${isDark ? "text-zinc-400 hover:text-white hover:bg-zinc-800" : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-200"}`}
+                        >
+                            <AArrowDown className="w-4 h-4" />
+                        </button>
+                        <button
+                            onClick={() => adjustFont(1)}
+                            disabled={fontIndex === FONT_SIZES.length - 1}
+                            aria-label="Increase caption size"
+                            className={`p-2 rounded-full transition-colors disabled:opacity-30 ${isDark ? "text-zinc-400 hover:text-white hover:bg-zinc-800" : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-200"}`}
+                        >
+                            <AArrowUp className="w-4 h-4" />
+                        </button>
+
                         {/* Theme toggle */}
                         <button
                             onClick={() => setIsDark(!isDark)}
+                            aria-label="Toggle light or dark theme"
                             className={`p-2 rounded-full transition-colors ${isDark ? "text-zinc-400 hover:text-white hover:bg-zinc-800" : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-200"}`}
                         >
                             {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
@@ -349,13 +316,13 @@ function AudienceJoinContent() {
                             {captions.map((cap) => (
                                 <p
                                     key={cap.id}
-                                    className={`text-2xl leading-relaxed font-light ${textColor} animate-in fade-in slide-in-from-bottom-2 duration-300`}
+                                    className={`${fontClass} leading-relaxed font-normal ${textColor} animate-in fade-in slide-in-from-bottom-2 duration-300`}
                                 >
-                                    {cap.translatedText}
+                                    {captionDisplayText(cap, selectedLanguage)}
                                 </p>
                             ))}
                             {interimText && (
-                                <p className={`text-2xl leading-relaxed font-light ${interimColor} italic`}>
+                                <p className={`${fontClass} leading-relaxed font-normal ${interimColor} italic`}>
                                     {interimText}
                                 </p>
                             )}

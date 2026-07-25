@@ -11,7 +11,6 @@ import {
     PipelineStatus,
 } from "@/lib/services/caption-pipeline";
 import { getPusherClient, getSessionChannel, CAPTION_EVENT } from "@/lib/pusher-client";
-import { isDemo, DEMO_USER } from "@/lib/demo";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -121,34 +120,6 @@ export default function LiveSessionPage() {
         async function fetchSession() {
             if (!sessionId || !currentOrganization) return;
 
-            // ── Demo Mode: load from sessionStorage ──────────
-            if (isDemo) {
-                const stored = sessionStorage.getItem(`demo-session-${sessionId}`);
-                if (stored) {
-                    const data = JSON.parse(stored) as Session;
-                    setSession(data);
-                    setIsLive(data.status === "live");
-                } else {
-                    // Fallback: create a default demo session on the fly
-                    const fallback: Session = {
-                        id: sessionId,
-                        organizationId: currentOrganization.id,
-                        name: "Demo Session",
-                        status: "scheduled",
-                        startTime: null,
-                        endTime: null,
-                        sourceLanguage: "en",
-                        targetLanguages: ["es", "fr"],
-                        createdAt: Date.now(),
-                        createdBy: DEMO_USER.uid,
-                    };
-                    sessionStorage.setItem(`demo-session-${sessionId}`, JSON.stringify(fallback));
-                    setSession(fallback);
-                }
-                setLoading(false);
-                return;
-            }
-            // ─────────────────────────────────────────────────
 
             try {
                 const { doc, getDoc } = await import("firebase/firestore");
@@ -262,6 +233,24 @@ export default function LiveSessionPage() {
         }
     }, []);
 
+    // Broadcast a status change over Pusher (endpoint requires operator auth)
+    const broadcastStatus = async (sessionId: string, status: string) => {
+        try {
+            const { auth } = await import("@/lib/firebase");
+            const idToken = await auth.currentUser?.getIdToken();
+            await fetch("/api/broadcast/status", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+                },
+                body: JSON.stringify({ sessionId, status }),
+            });
+        } catch (err) {
+            console.error("Status broadcast failed:", err);
+        }
+    };
+
     // Toggle broadcast
     const handleToggleBroadcast = async () => {
         if (!session) return;
@@ -273,20 +262,14 @@ export default function LiveSessionPage() {
 
             const timeUpdates = { endTime: Date.now() };
             try {
-                if (!isDemo) {
-                    const { sessionService } = await import("@/lib/services/sessions");
-                    await sessionService.updateSessionStatus(session.id, "completed", timeUpdates);
-                }
+                const { sessionService } = await import("@/lib/services/sessions");
+                await sessionService.updateSessionStatus(session.id, "completed", timeUpdates);
                 setIsLive(false);
                 setSession({ ...session, status: "completed", ...timeUpdates });
                 setError(null);
 
                 // Broadcast the status change over Pusher
-                fetch("/api/broadcast/status", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ sessionId: session.id, status: "completed" })
-                }).catch(console.error);
+                void broadcastStatus(session.id, "completed");
             } catch (err) {
                 console.error("Error stopping broadcast:", err);
             }
@@ -294,10 +277,8 @@ export default function LiveSessionPage() {
             // --- START ---
             const timeUpdates = { startTime: Date.now() };
             try {
-                if (!isDemo) {
-                    const { sessionService } = await import("@/lib/services/sessions");
-                    await sessionService.updateSessionStatus(session.id, "live", timeUpdates);
-                }
+                const { sessionService } = await import("@/lib/services/sessions");
+                await sessionService.updateSessionStatus(session.id, "live", timeUpdates);
                 setIsLive(true);
                 setSession({ ...session, status: "live", ...timeUpdates });
                 setCaptions([]);
@@ -307,11 +288,7 @@ export default function LiveSessionPage() {
                 setError(null);
 
                 // Broadcast the status change over Pusher
-                fetch("/api/broadcast/status", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ sessionId: session.id, status: "live" })
-                }).catch(console.error);
+                void broadcastStatus(session.id, "live");
 
                 // Create and start the captioning pipeline
                 const pipeline = new CaptionPipeline({

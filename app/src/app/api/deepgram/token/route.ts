@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@deepgram/sdk";
-import { checkDemoRateLimit } from "@/lib/rate-limit";
-import { getClientIp, verifyRequestAuth } from "@/lib/auth-helpers";
+import { verifyRequestAuth } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
-const DEMO_TOKEN_LIMIT = 5; // Max 5 token requests per IP per day
 const TOKEN_TTL_SECONDS = 30; // Short-lived: the WebSocket connects immediately
 
 /**
@@ -36,26 +34,9 @@ async function mintDeepgramToken(): Promise<
 }
 
 export async function GET(request: Request) {
-    const isDemo = process.env.NEXT_PUBLIC_APP_MODE === "demo";
-
-    // ── Demo Mode: Rate limit + skip Firebase auth ──────────
-    if (isDemo) {
-        const ip = getClientIp(request);
-        const { allowed, remaining } = checkDemoRateLimit(ip, DEMO_TOKEN_LIMIT);
-
-        if (!allowed) {
-            return NextResponse.json(
-                { error: "Demo limit reached (5 sessions/day). Sign up for full access!" },
-                { status: 429 }
-            );
-        }
-        console.log(`[Demo] Token request from ${ip} — ${remaining} remaining`);
-    } else {
-        // ── Production: Authenticate via Firebase Admin ──────
-        const auth = await verifyRequestAuth(request);
-        if (!auth) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
+    const auth = await verifyRequestAuth(request);
+    if (!auth) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const minted = await mintDeepgramToken();

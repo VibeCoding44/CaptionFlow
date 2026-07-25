@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
-import { isDemo } from "@/lib/demo";
 import { Button } from "@/components/ui/button";
 import LiveCaptionDemo from "@/components/landing/LiveCaptionDemo";
 import {
@@ -66,10 +65,10 @@ const USE_CASES = [
 export default function HomePage() {
     const { user } = useAuth();
 
-    // Primary CTA adapts to context: demo launches the workspace, signed-in
-    // users go to their dashboard, everyone else starts a free account.
-    const primaryHref = isDemo ? "/dashboard" : user ? "/dashboard" : "/register";
-    const primaryLabel = isDemo ? "Open the demo" : user ? "Go to dashboard" : "Get started free";
+    // Primary CTA adapts to context: signed-in users go to their dashboard,
+    // everyone else starts a free account.
+    const primaryHref = user ? "/dashboard" : "/register";
+    const primaryLabel = user ? "Go to dashboard" : "Get started free";
 
     return (
         <div className="min-h-screen bg-zinc-950 text-white">
@@ -90,7 +89,7 @@ export default function HomePage() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                        {!isDemo && !user && (
+                        {!user && (
                             <Link href="/login" className="hidden sm:block">
                                 <Button variant="ghost" size="sm" className="text-zinc-300 hover:text-white">
                                     Sign in
@@ -134,9 +133,9 @@ export default function HomePage() {
                                     <ArrowRight className="h-4 w-4" />
                                 </Button>
                             </Link>
-                            <a href="https://demo.caption-flow.com" target="_blank" rel="noopener noreferrer">
+                            <a href="#how">
                                 <Button size="lg" variant="outline" className="border-zinc-700 bg-transparent px-6 text-zinc-200 hover:bg-zinc-900 hover:text-white">
-                                    Try the live demo
+                                    See how it works
                                 </Button>
                             </a>
                         </div>
@@ -258,9 +257,7 @@ export default function HomePage() {
                     <div className="flex items-center gap-6 text-sm text-zinc-500">
                         <a href="#how" className="transition-colors hover:text-zinc-300">How it works</a>
                         <a href="#use-cases" className="transition-colors hover:text-zinc-300">Use cases</a>
-                        {!isDemo && (
-                            <Link href="/login" className="transition-colors hover:text-zinc-300">Sign in</Link>
-                        )}
+                        <Link href="/login" className="transition-colors hover:text-zinc-300">Sign in</Link>
                     </div>
                     <p className="text-sm text-zinc-500">© 2026 CaptionFlow</p>
                 </div>

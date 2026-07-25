@@ -4,8 +4,6 @@ import { notFound, redirect } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import RefreshRedirector from '@/components/session/RefreshRedirector';
 
-const isDemo = process.env.NEXT_PUBLIC_APP_MODE === "demo";
-
 export const metadata: Metadata = {
     title: 'Live Broadcast',
 };
@@ -24,30 +22,6 @@ async function getLiveSession(organizationId: string): Promise<Session | null> {
 
 export default async function LivePage({ params }: { params: Promise<{ slug: string }> }) {
     const slug = (await params).slug;
-
-    // In demo mode, there are no real organizations or sessions
-    if (isDemo) {
-        return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 max-w-lg w-full text-center space-y-6">
-                    <div className="mx-auto w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-6">
-                        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
-                    </div>
-                    <h1 className="text-2xl font-semibold text-slate-900">
-                        Waiting for broadcast...
-                    </h1>
-                    <p className="text-slate-500 text-lg">
-                        No active broadcast found for &ldquo;{slug}&rdquo;.
-                    </p>
-                    <div className="h-px bg-slate-100 my-8 w-full"></div>
-                    <p className="text-sm text-slate-400">
-                        This page will automatically redirect you once the broadcast begins.
-                    </p>
-                    <RefreshRedirector intervalMs={3000} />
-                </div>
-            </div>
-        );
-    }
 
     // Look up the organization by slug via admin SDK
     const { adminDb } = await import('@/lib/firebase-admin');

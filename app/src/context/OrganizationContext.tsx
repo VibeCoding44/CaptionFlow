@@ -3,7 +3,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { useAuth } from "./AuthContext";
 import { Organization, OrganizationMember } from "@/types";
-import { isDemo, DEMO_ORGANIZATION } from "@/lib/demo";
 
 interface OrganizationContextType {
     organizations: Organization[]; // All orgs they belong to
@@ -31,16 +30,6 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
             setLoadingOrganization(false);
             return;
         }
-
-        // ── Demo Mode: use mock org ──────────────────────
-        if (isDemo) {
-            setOrganizations([DEMO_ORGANIZATION]);
-            setCurrentOrganization(DEMO_ORGANIZATION);
-            setCurrentMemberRole("owner");
-            setLoadingOrganization(false);
-            return;
-        }
-        // ─────────────────────────────────────────────────
 
         try {
             const { collection, query, where, getDocs, doc, getDoc } = await import("firebase/firestore");

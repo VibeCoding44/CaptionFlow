@@ -29,7 +29,6 @@ import {
 } from "lucide-react";
 import { useOrganization } from "@/context/OrganizationContext";
 import { useAuth } from "@/context/AuthContext";
-import { isDemo } from "@/lib/demo";
 
 const LANGUAGE_MAP: Record<string, string> = {
     es: "Spanish",
@@ -94,7 +93,6 @@ export default function SettingsPage() {
 
     const handleSaveTranscription = async () => {
         if (!currentOrganization) return;
-        if (isDemo) { alert("Settings are read-only in demo mode."); return; }
         setTranscriptionSaveStatus("saving");
         try {
             const { orgService } = await import("@/lib/services/organization");
@@ -117,7 +115,6 @@ export default function SettingsPage() {
 
     const handleSaveTranslation = async () => {
         if (!currentOrganization) return;
-        if (isDemo) { alert("Settings are read-only in demo mode."); return; }
         setTranslationSaveStatus("saving");
         try {
             const { orgService } = await import("@/lib/services/organization");
@@ -135,7 +132,6 @@ export default function SettingsPage() {
 
     const handleSaveDisplay = async () => {
         if (!currentOrganization) return;
-        if (isDemo) { alert("Settings are read-only in demo mode."); return; }
         setDisplaySaveStatus("saving");
         try {
             const { doc, updateDoc } = await import("firebase/firestore");
@@ -160,7 +156,6 @@ export default function SettingsPage() {
 
     const handleSaveAccount = async () => {
         if (!user || !currentOrganization) return;
-        if (isDemo) { alert("Settings are read-only in demo mode."); return; }
         setAccountSaveStatus("saving");
         try {
             const { updateProfile } = await import("firebase/auth");

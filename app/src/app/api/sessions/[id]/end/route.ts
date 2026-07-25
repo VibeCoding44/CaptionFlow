@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 
-const isDemo = process.env.NEXT_PUBLIC_APP_MODE === "demo";
-
 export async function POST(
     request: Request,
     { params }: { params: Promise<{ id: string }> } | { params: { id: string } }
@@ -12,12 +10,6 @@ export async function POST(
 
         if (!id) {
             return NextResponse.json({ error: "Missing session ID" }, { status: 400 });
-        }
-
-        // Demo mode: skip all auth and Firestore operations
-        if (isDemo) {
-            console.log("[Demo] Skipping session end for:", id);
-            return NextResponse.json({ success: true });
         }
 
         // 1. Authenticate the request

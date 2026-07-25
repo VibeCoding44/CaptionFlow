@@ -18,7 +18,6 @@ import { useEffect, useState } from "react";
 import { useOrganization } from "@/context/OrganizationContext";
 import { Session } from "@/types";
 import { formatDistanceToNow } from "date-fns";
-import { isDemo, DEMO_SESSIONS } from "@/lib/demo";
 
 // Mock data for initial dashboard before load
 const initialStats = [
@@ -63,15 +62,8 @@ export default function DashboardPage() {
             }
 
             try {
-                // ── Demo Mode: use mock data ──────────────────
-                let sessions: Session[];
-                if (isDemo) {
-                    sessions = DEMO_SESSIONS;
-                } else {
-                    const { sessionService } = await import("@/lib/services/sessions");
-                    sessions = await sessionService.getSessions(currentOrganization.id);
-                }
-                // ──────────────────────────────────────────────
+                const { sessionService } = await import("@/lib/services/sessions");
+                const sessions: Session[] = await sessionService.getSessions(currentOrganization.id);
 
                 setRecentSessions(sessions.slice(0, 5));
 

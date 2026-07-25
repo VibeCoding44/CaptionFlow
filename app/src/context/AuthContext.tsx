@@ -14,7 +14,6 @@ import {
     updateProfile,
 } from "firebase/auth";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
-import { isDemo, DEMO_USER } from "@/lib/demo";
 
 interface AuthContextType {
     user: User | null;
@@ -34,16 +33,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [authError, setAuthError] = useState<string | null>(null);
 
     useEffect(() => {
-        // ── Demo Mode: skip Firebase auth entirely ──
-        if (isDemo) {
-            // Cast the demo user object as a User so the rest of the app works
-            setUser(DEMO_USER as unknown as User);
-            setLoading(false);
-            return;
-        }
-        // ─────────────────────────────────────────────
-
-        // Only import firebase when NOT in demo mode
         const initAuth = async () => {
             const { auth, db } = await import("@/lib/firebase");
 
@@ -87,7 +76,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, []);
 
     const signIn = async (email: string, password: string) => {
-        if (isDemo) return;
         setAuthError(null);
         const { auth, db } = await import("@/lib/firebase");
         const cred = await signInWithEmailAndPassword(auth, email, password);
@@ -105,7 +93,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     const signUp = async (email: string, password: string, name: string) => {
-        if (isDemo) return;
         setAuthError(null);
         const { auth, db } = await import("@/lib/firebase");
         const cred = await createUserWithEmailAndPassword(auth, email, password);
@@ -121,7 +108,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     const signInWithGoogle = async () => {
-        if (isDemo) return;
         setAuthError(null);
         const { auth, db } = await import("@/lib/firebase");
         const provider = new GoogleAuthProvider();
@@ -148,7 +134,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     const signOut = async () => {
-        if (isDemo) return;
         const { auth } = await import("@/lib/firebase");
         await firebaseSignOut(auth);
     };
