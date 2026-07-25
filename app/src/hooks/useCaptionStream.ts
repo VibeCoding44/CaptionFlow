@@ -49,7 +49,6 @@ export function useCaptionStream(sessionId: string | null, opts?: { clearOnCompl
         const pusher = getPusherClient();
         const channel = pusher.subscribe(getSessionChannel(sessionId));
 
-        setConnected(true);
         channel.bind("pusher:subscription_succeeded", () => setConnected(true));
 
         channel.bind(CAPTION_EVENT, (data: CaptionEventData) => {

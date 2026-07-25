@@ -127,7 +127,7 @@ function AudienceJoinContent() {
         })();
 
         return () => { cancelled = true; };
-    }, [sessionId]);
+    }, [sessionId, setSessionStatus]);
 
     // No session ID
     if (!sessionId) {
